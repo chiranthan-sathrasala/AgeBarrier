@@ -21,7 +21,7 @@ export type DateParts = {
   day: number;
 };
 
-export type AadhaarFields = {
+type AadhaarFields = {
   indicator: string;
   refid: string;
   name: string;
@@ -71,7 +71,13 @@ const SIGNED_BYTES_MIN = 256 + 16 + 4;
 const MAX_DECOMPRESSED_BYTES = 64 * 1024;
 const DOB_RE = /^\d{2}-\d{2}-\d{4}$/;
 
-export class MalformedError extends Error {
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
+class MalformedError extends Error {
   public readonly reason: MalformedReason;
 
   public constructor(reason: MalformedReason) {
@@ -81,6 +87,7 @@ export class MalformedError extends Error {
   }
 }
 
+// internal, for tests only
 export function decodeIso8859_1(bytes: Uint8Array): string {
   let text = '';
   for (const byte of bytes) {
@@ -89,6 +96,7 @@ export function decodeIso8859_1(bytes: Uint8Array): string {
   return text;
 }
 
+// internal, for tests only
 export function normalizeDecimalString(digits: string): string {
   const trimmed = digits.trim();
   if (trimmed.length === 0 || !/^[0-9]+$/.test(trimmed)) {
@@ -100,6 +108,7 @@ export function normalizeDecimalString(digits: string): string {
   return trimmed;
 }
 
+// internal, for tests only
 export function decimalStringToBytes(digits: string): Uint8Array {
   const normalized = normalizeDecimalString(digits);
   const value = BigInt(normalized);
@@ -116,21 +125,19 @@ export function decimalStringToBytes(digits: string): Uint8Array {
   return bytes;
 }
 
+// internal, for tests only
 export async function gunzipBytes(rawBytes: Uint8Array): Promise<Uint8Array> {
-  try {
-    const stream = new DecompressionStream('gzip');
-    const writer = stream.writable.getWriter();
-    await writer.write(rawBytes);
-    await writer.close();
+  const stream = new DecompressionStream('gzip');
+  const writer = stream.writable.getWriter();
+  const reader = stream.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
 
-    const reader = stream.readable.getReader();
-    const chunks: Uint8Array[] = [];
-    let totalLength = 0;
-
+  const readPromise = (async (): Promise<void> => {
     while (true) {
       const next = await reader.read();
       if (next.done) {
-        break;
+        return;
       }
       if (next.value !== undefined) {
         totalLength += next.value.byteLength;
@@ -140,7 +147,15 @@ export async function gunzipBytes(rawBytes: Uint8Array): Promise<Uint8Array> {
         chunks.push(next.value);
       }
     }
+  })();
 
+  const writePromise = (async (): Promise<void> => {
+    await writer.write(toArrayBuffer(rawBytes));
+    await writer.close();
+  })();
+
+  try {
+    await Promise.all([readPromise, writePromise]);
     const decompressed = new Uint8Array(totalLength);
     let offset = 0;
     for (const chunk of chunks) {
@@ -148,7 +163,11 @@ export async function gunzipBytes(rawBytes: Uint8Array): Promise<Uint8Array> {
       offset += chunk.length;
     }
     return decompressed;
-  } catch (error) {
+  } catch (error: unknown) {
+    await Promise.allSettled([
+      reader.cancel(),
+      writer.abort(error)
+    ]);
     if (error instanceof MalformedError) {
       throw error;
     }
@@ -156,6 +175,7 @@ export async function gunzipBytes(rawBytes: Uint8Array): Promise<Uint8Array> {
   }
 }
 
+// internal, for tests only
 export function parseAadhaarPayload(raw: Uint8Array): AadhaarFields {
   if (raw.length < SIGNED_BYTES_MIN) {
     throw new MalformedError('too_short');
@@ -207,38 +227,38 @@ export function parseAadhaarPayload(raw: Uint8Array): AadhaarFields {
   } as AadhaarFields;
 }
 
+// internal, for tests only
 export function normalizeDobString(value: string): { year: number; month: number; day: number } {
   if (!DOB_RE.test(value)) {
     throw new MalformedError('bad_dob');
   }
 
   const [dayText, monthText, yearText] = value.split('-');
-  const day = Number(dayText);
-  const month = Number(monthText);
-  const year = Number(yearText);
+  const day = Number.parseInt(dayText, 10);
+  const month = Number.parseInt(monthText, 10);
+  const year = Number.parseInt(yearText, 10);
 
-  if (year < 1900) {
+  if (year < 1900 || month < 1 || month > 12) {
     throw new MalformedError('bad_dob');
   }
 
-  const candidate = new Date(year, month - 1, day);
-  if (
-    candidate.getFullYear() !== year ||
-    candidate.getMonth() !== month - 1 ||
-    candidate.getDate() !== day
-  ) {
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  if (day < 1 || day > daysInMonth) {
     throw new MalformedError('bad_dob');
   }
 
   return { year, month, day };
 }
 
+// internal, for tests only
 export function compareDateParts(left: DateParts, right: DateParts): number {
   const leftKey = left.year * 10000 + left.month * 100 + left.day;
   const rightKey = right.year * 10000 + right.month * 100 + right.day;
   return leftKey - rightKey;
 }
 
+// internal, for tests only
 export function calculateAge(today: DateParts, dob: DateParts): number {
   const hasBirthdayPassed =
     today.month > dob.month ||
@@ -256,24 +276,35 @@ export function todayLocal(): DateParts {
 }
 
 export async function importSpkiPem(pem: string): Promise<CryptoKey> {
-  const normalized = pem
-    .replace('-----BEGIN PUBLIC KEY-----', '')
-    .replace('-----END PUBLIC KEY-----', '')
-    .replace(/-----BEGIN RSA PUBLIC KEY-----/g, '')
-    .replace(/-----END RSA PUBLIC KEY-----/g, '')
-    .replace(/\r/g, '')
-    .replace(/\n/g, '')
-    .trim();
+  const match = pem.match(/^\s*-----BEGIN PUBLIC KEY-----([\s\S]+)-----END PUBLIC KEY-----\s*$/);
+  if (match === null) {
+    throw new Error('Invalid SPKI PEM');
+  }
 
-  const binary = Buffer.from(normalized, 'base64');
+  const normalized = match[1].replace(/\s/g, '');
+  if (normalized.length === 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) {
+    throw new Error('Invalid SPKI PEM');
+  }
+
+  let binaryText: string;
+  try {
+    binaryText = atob(normalized);
+  } catch {
+    throw new Error('Invalid SPKI PEM');
+  }
+  const binary = new Uint8Array(binaryText.length);
+  for (let index = 0; index < binaryText.length; index += 1) {
+    binary[index] = binaryText.charCodeAt(index);
+  }
+
   return crypto.subtle.importKey(
     'spki',
-    binary,
+    toArrayBuffer(binary),
     {
       name: 'RSASSA-PKCS1-v1_5',
       hash: 'SHA-256'
     },
-    true,
+    false,
     ['verify']
   );
 }
@@ -284,6 +315,20 @@ export async function verifyAadhaarQr(
   today: DateParts
 ): Promise<VerifyResult> {
   try {
+    const algorithm = trustedKey.algorithm;
+    const hash = 'hash' in algorithm ? algorithm.hash : undefined;
+    if (
+      algorithm.name !== 'RSASSA-PKCS1-v1_5' ||
+      !('modulusLength' in algorithm) ||
+      typeof hash !== 'object' ||
+      hash === null ||
+      !('name' in hash) ||
+      hash.name !== 'SHA-256' ||
+      algorithm.modulusLength !== 2048
+    ) {
+      return { status: 'bad_signature' };
+    }
+
     const normalizedDigits = normalizeDecimalString(digits);
     const bigintBytes = decimalStringToBytes(normalizedDigits);
     const raw = await gunzipBytes(bigintBytes);
@@ -299,8 +344,8 @@ export async function verifyAadhaarQr(
       const verified = await crypto.subtle.verify(
         { name: 'RSASSA-PKCS1-v1_5' },
         trustedKey,
-        signature,
-        signedData
+        toArrayBuffer(signature),
+        toArrayBuffer(signedData)
       );
       if (!verified) {
         return { status: 'bad_signature' };

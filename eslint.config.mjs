@@ -32,6 +32,19 @@ export default [
     }
   },
   {
+    files: ['src/core/**/*.ts'],
+    rules: {
+      'no-restricted-globals': ['error', 'Buffer', 'process', 'require', 'console'],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.name='require']",
+          message: 'require is not allowed in src/core'
+        }
+      ]
+    }
+  },
+  {
     files: ['**/*.mjs'],
     languageOptions: {
       sourceType: 'module',

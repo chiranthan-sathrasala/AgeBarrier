@@ -9,6 +9,7 @@
   "scripts": {
     "test": "vitest run",
     "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
     "build:test": "vite build --mode test",
     "build:release": "vite build --mode release",
     "check:no-network": "node scripts/check-no-network.mjs",
