@@ -92,6 +92,7 @@ Source: UIDAI "Secure QR Code Specification" (March 2019), cross-checked by deco
 | DOB/QR fields visible to the extension itself | Mitigated | With ZKP removed, the extension briefly reads the DOB in its own isolated context. It is never persisted or logged; only the signed age credential and face embedding are stored |
 | Extension logging/caching bugs | Depends | Needs manual verification during dev that console/storage hold only signed derived credentials, never raw QR fields |
 | UIDAI issuance compromise | Out of scope | Same root-of-trust assumption as any Aadhaar-based system |
+| Device clock tampering | Accepted limitation | Device clock is untrusted. With no server there is no trusted time source, so a user who sets the system clock FORWARD can make an under-18 DOB pass the age check. Setting it back only makes an adult look younger. Mitigation is the managed-profile deployment requirement; the extension cannot detect it. |
 
 ## 7. Key Design Decisions (Why, Not Just What)
 - **No ZKP:** see the design correction in §3. Simpler, removes the hardest and least-mature component, and loses no real privacy because no external verifier exists.
@@ -113,6 +114,7 @@ Source: UIDAI "Secure QR Code Specification" (March 2019), cross-checked by deco
 - Only protects the specific gated sites configured in the extension's list — no general "detect any age gate" heuristic.
 - Depends on the guardian noticing or checking logs; a minor clearing logs afterward is accepted as out of scope.
 - A technical adult on an unmanaged, unrestricted browser can defeat the extension entirely.
+- Device clock is untrusted. With no server there is no trusted time source, so a user who sets the system clock FORWARD can make an under-18 DOB pass the age check. Setting it back only makes an adult look younger. Mitigation is the managed-profile deployment requirement; the extension cannot detect it.
 
 ## 9. Open Items
 **Resolved in rev 2:** credential expiry (30 days); ZKP tooling question (ZKP dropped); JPEG2000 encoding (confirmed, raw codestream); face-library selection (§7); test-data strategy (§10).

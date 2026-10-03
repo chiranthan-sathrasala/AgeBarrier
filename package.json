@@ -11,7 +11,7 @@
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
     "build:test": "vite build --mode test",
-    "build:release": "vite build --mode release",
+    "build:release": "node scripts/build-release.mjs",
     "check:no-network": "node scripts/check-no-network.mjs",
     "check:release-clean": "node scripts/check-release-clean.mjs"
   },

@@ -68,7 +68,7 @@ describe('AgeBarrier verification', () => {
   });
 
   for (const testCase of manifest.cases) {
-    it('verifies one manifest case without exposing document data', async () => {
+    it(`verifies manifest case ${testCase.id} without exposing document data`, async () => {
       const payload = readFileSync(join(testdataRoot, testCase.payload), 'utf8').trim();
       const result = await verifyAadhaarQr(payload, await loadTrustedKey(), parseManifestDate(manifest.today));
 
@@ -88,6 +88,35 @@ describe('AgeBarrier verification', () => {
       }
     });
   }
+
+  // Deliberate exception to the rule that expected results come from manifest.json:
+  // these assertions lock down the public malformed-reason contract for named cases.
+  it('preserves the documented malformed reasons', async () => {
+    const expectedReasons: Record<string, { status: 'malformed'; reason: string }> = {
+      bad_indicator: { status: 'malformed', reason: 'bad_indicator' },
+      bad_dob_format: { status: 'malformed', reason: 'bad_dob' },
+      future_dob: { status: 'malformed', reason: 'bad_dob' },
+      not_gzip: { status: 'malformed', reason: 'not_gzip' },
+      garbage_digits: { status: 'malformed', reason: 'not_gzip' }
+    };
+
+    for (const [id, expected] of Object.entries(expectedReasons)) {
+      const testCase = manifest.cases.find((candidate) => candidate.id === id);
+      expect(testCase).toBeDefined();
+      const payload = readFileSync(join(testdataRoot, testCase!.payload), 'utf8').trim();
+      expect(await verifyAadhaarQr(payload, await loadTrustedKey(), parseManifestDate(manifest.today)))
+        .toEqual(expected);
+    }
+  });
+
+  it('canaries the adult_25 decompressed prefix', async () => {
+    const testCase = manifest.cases.find((candidate) => candidate.id === 'adult_25');
+    expect(testCase).toBeDefined();
+    const payload = readFileSync(join(testdataRoot, testCase!.payload), 'utf8').trim();
+    const raw = await gunzipBytes(decimalStringToBytes(payload));
+    expect(raw[0]).toBe('2'.charCodeAt(0));
+    expect(raw[1]).toBe(0xff);
+  });
 
   it('parses the official sample and rejects it with the test key', async () => {
     const samplePayload = readFileSync(join(testdataRoot, 'official_sample', 'payload.txt'), 'utf8').trim();
