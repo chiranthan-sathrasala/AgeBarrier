@@ -1,10 +1,12 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 
 import { importSpkiPem, verifyAadhaarQr } from '../src/core/index';
+import { scanDirectory } from '../scripts/release-scan.mjs';
 import {
   calculateAge,
   decodeIso8859_1,
@@ -63,6 +65,11 @@ async function loadTrustedKey(): Promise<CryptoKey> {
 }
 
 describe('AgeBarrier verification', () => {
+  it('exposes only the intended runtime entry-point exports', async () => {
+    const entryPoint = await import('../src/core/index');
+    expect(Object.keys(entryPoint).sort()).toEqual(['importSpkiPem', 'todayLocal', 'verifyAadhaarQr']);
+  });
+
   it('uses a manifest with at least 25 cases', () => {
     expect(manifest.cases.length).toBeGreaterThanOrEqual(25);
   });
@@ -116,6 +123,53 @@ describe('AgeBarrier verification', () => {
     const raw = await gunzipBytes(decimalStringToBytes(payload));
     expect(raw[0]).toBe('2'.charCodeAt(0));
     expect(raw[1]).toBe(0xff);
+  });
+
+  it('rejects keys with unsupported algorithm parameters', async () => {
+    const testCase = manifest.cases.find((candidate) => candidate.id === 'adult_25');
+    expect(testCase).toBeDefined();
+    const payload = readFileSync(join(testdataRoot, testCase!.payload), 'utf8').trim();
+    const pem = readFileSync(join(testdataRoot, manifest.trusted_public_key), 'utf8');
+    const body = pem
+      .replace('-----BEGIN PUBLIC KEY-----', '')
+      .replace('-----END PUBLIC KEY-----', '')
+      .replace(/\s/g, '');
+    const binary = Uint8Array.from(atob(body), (character) => character.charCodeAt(0));
+    const sha1Key = await crypto.subtle.importKey(
+      'spki',
+      binary,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' },
+      false,
+      ['verify']
+    );
+    expect(await verifyAadhaarQr(payload, sha1Key, parseManifestDate(manifest.today)))
+      .toEqual({ status: 'bad_signature' });
+
+    const weakPair = await crypto.subtle.generateKey(
+      {
+        name: 'RSASSA-PKCS1-v1_5',
+        modulusLength: 1024,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: 'SHA-256'
+      },
+      false,
+      ['sign', 'verify']
+    );
+    expect(await verifyAadhaarQr(payload, weakPair.publicKey, parseManifestDate(manifest.today)))
+      .toEqual({ status: 'bad_signature' });
+  });
+
+  it('rejects malformed SPKI PEM inputs', async () => {
+    const testCases = [
+      '',
+      'garbage',
+      '-----BEGIN RSA PUBLIC KEY-----\nAAAA\n-----END RSA PUBLIC KEY-----',
+      '-----BEGIN PUBLIC KEY-----\n%%%invalid%%%\n-----END PUBLIC KEY-----',
+      '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----'
+    ];
+    for (const pem of testCases) {
+      await expect(importSpkiPem(pem)).rejects.toThrow();
+    }
   });
 
   it('parses the official sample and rejects it with the test key', async () => {
@@ -218,6 +272,37 @@ describe('AgeBarrier verification', () => {
         expect(importedPath.startsWith('.')).toBe(true);
         expect(resolve(fullPath, '..', importedPath)).toContain(resolve(coreRoot));
       }
+    }
+  });
+});
+
+describe('Release scanning', () => {
+  it('flags embedded test public keys and testdata references', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'agebarrier-release-scan-'));
+    try {
+      const testPem = readFileSync(join(testdataRoot, 'keys', 'test_public.pem'), 'utf8');
+      const otherPem = readFileSync(join(testdataRoot, 'keys', 'other_public.pem'), 'utf8');
+      const testBody = testPem
+        .replace('-----BEGIN PUBLIC KEY-----', '')
+        .replace('-----END PUBLIC KEY-----', '')
+        .replace(/\s/g, '');
+      writeFileSync(join(directory, 'json.txt'), JSON.stringify(testPem));
+      writeFileSync(join(directory, 'other-json.txt'), JSON.stringify(otherPem));
+      writeFileSync(join(directory, 'body.txt'), testBody);
+      writeFileSync(join(directory, 'clean.txt'), 'release content only');
+      writeFileSync(join(directory, 'word.txt'), 'testdata');
+
+      const violations = scanDirectory(directory, [
+        join(testdataRoot, 'keys', 'test_public.pem'),
+        join(testdataRoot, 'keys', 'other_public.pem')
+      ]);
+      expect(violations.some((violation) => violation.includes('json.txt'))).toBe(true);
+      expect(violations.some((violation) => violation.includes('other-json.txt'))).toBe(true);
+      expect(violations.some((violation) => violation.includes('body.txt'))).toBe(true);
+      expect(violations.some((violation) => violation.includes('word.txt'))).toBe(true);
+      expect(violations.some((violation) => violation.includes('clean.txt'))).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });
