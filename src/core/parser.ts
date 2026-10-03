@@ -150,7 +150,7 @@ export async function gunzipBytes(rawBytes: Uint8Array): Promise<Uint8Array> {
   })();
 
   const writePromise = (async (): Promise<void> => {
-    await writer.write(toArrayBuffer(rawBytes));
+    await writer.write(rawBytes as Uint8Array<ArrayBuffer>);
     await writer.close();
   })();
 
