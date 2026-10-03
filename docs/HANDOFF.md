@@ -36,7 +36,7 @@
 - Ignored the actual Vite output root `dist/`, plus the requested build/cache directories.
 - Ignored test private keys, while leaving already tracked private-key fixtures untouched because the task explicitly forbids untracking tracked files under `testdata/`.
 - Kept `package-lock.json`, public test fixtures, public keys, documentation, and project rules addable.
-- The Stage 1 hardening changes are ready for the requested commit; no push is planned.
+- The Stage 1 hardening changes were committed as `5c428e3`; no push was performed.
 - Kept parser helpers exported only through the deep test path and marked them `internal, for tests only`; the package entry point exposes only the requested API.
 - Imported SPKI keys as non-extractable verify-only keys and rejected trusted keys whose algorithm metadata is not RSA-2048/SHA-256.
 - Used concurrent decompression reading/writing with cancellation and writer abort on failure.
