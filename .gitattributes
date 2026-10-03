@@ -1,0 +1,9 @@
+# Normalize ordinary source and documentation text.
+* text=auto
+
+# Fixtures must remain byte-exact.
+testdata/** -text
+
+# Binary fixtures.
+*.png binary
+*.j2k binary

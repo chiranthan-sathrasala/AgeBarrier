@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+
+# Build output and tool caches
+dist/
+build/
+out/
+*.tsbuildinfo
+.vite/
+.vitest/
+coverage/
+.eslintcache
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Chrome extension packaging (repository root only)
+/*.crx
+/key.pem
+/*.zip
+
+# Real documents and private local test material
+/local-private/
+
+# Test private keys
+testdata/keys/*_private.pem
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Tool leftovers
+*.orig
+*.rej
+*.swp
+
+# Deliberately tracked: package-lock.json is the reproducible dependency lockfile.
+# Deliberately tracked: testdata fixtures, manifest, public keys, and helper scripts are test inputs.
+# Deliberately tracked: docs/, AGENTS.md, and .github/copilot-instructions.md document project rules.
+# Deliberately tracked: config/uidai_spki.pem is a public key, not a secret.
