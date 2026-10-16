@@ -13,17 +13,23 @@
     "build:test": "vite build --mode test",
     "build:release": "node scripts/build-release.mjs",
     "check:no-network": "node scripts/check-no-network.mjs",
-    "check:release-clean": "node scripts/check-release-clean.mjs"
+    "check:release-clean": "node scripts/check-release-clean.mjs",
+    "spike:qr": "node scripts/qr-spike.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
     "@types/node": "^22.10.1",
     "@typescript-eslint/eslint-plugin": "^8.17.0",
     "@typescript-eslint/parser": "^8.17.0",
+    "@zxing/library": "^0.23.0",
     "eslint": "^9.15.0",
     "globals": "^15.12.0",
+    "jpeg-js": "^0.4.4",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "zxing-wasm": "^3.1.5"
   }
 }
